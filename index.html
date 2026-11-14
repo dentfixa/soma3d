@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOMA 3D · 인체 해부 뷰어</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --bg0: #0b0e13; --bg1: #1a2230;
+    --glass: rgba(18, 23, 31, .78); --glass-strong: rgba(18, 23, 31, .94);
+    --line: rgba(255, 255, 255, .08); --line-strong: rgba(255, 255, 255, .16);
+    --text: #eef2f7; --muted: #8b97a8; --faint: #5d6878;
+    --accent: #4cc2ff; --accent-2: #7b8cff; --accent-ink: #04121c;
+    --chip: rgba(255, 255, 255, .06); --chip-hover: rgba(255, 255, 255, .12);
+    --radius: 14px; --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--text);
+    background: radial-gradient(1200px 800px at 62% 38%, var(--bg1) 0%, #111722 45%, var(--bg0) 100%);
+    font: 14px/1.5 "Pretendard Variable", Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+
+  button { font: inherit; color: var(--text); background: var(--chip); border: 1px solid var(--line);
+    border-radius: 9px; padding: 7px 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s, transform .1s; }
+  button:hover { background: var(--chip-hover); border-color: var(--line-strong); }
+  button:active { transform: translateY(1px); }
+  button.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; color: var(--accent-ink); font-weight: 650; }
+  button.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.ghost:hover { background: var(--chip); color: var(--text); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,.14); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,.14); }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }
+  /* switch-style checkboxes */
+  input[type=checkbox] { -webkit-appearance: none; appearance: none; flex: none; width: 30px; height: 17px; border-radius: 10px; margin: 0;
+    background: rgba(255,255,255,.14); position: relative; cursor: pointer; transition: background .15s; }
+  input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  input[type=checkbox]:checked { background: var(--accent); }
+  input[type=checkbox]:checked::after { transform: translateX(13px); }
+  input[type=checkbox]:indeterminate { background: rgba(76, 194, 255, .45); }
+  input[type=checkbox]:indeterminate::after { transform: translateX(6.5px); }
+
+  .glass { background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);
+    backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); box-shadow: var(--shadow); }
+  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- sidebar ---------- */
+  #left { position: fixed; top: 14px; left: 14px; bottom: 14px; width: 332px; display: flex; flex-direction: column; overflow: hidden; z-index: 4; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 16px 18px 12px; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+  .brand b { font-size: 16px; letter-spacing: .04em; font-weight: 750; }
+  .brand span { display: block; font-size: 11.5px; color: var(--muted); margin-top: -2px; }
+  .searchbox { position: relative; margin: 0 14px 10px; }
+  .searchbox svg { position: absolute; left: 11px; top: 10px; color: var(--faint); pointer-events: none; }
+  #search { width: 100%; padding: 9px 12px 9px 34px; border-radius: 10px; border: 1px solid var(--line);
+    background: rgba(0,0,0,.28); color: var(--text); font: inherit; }
+  #search::placeholder { color: var(--faint); }
+  #results { max-height: 240px; overflow-y: auto; margin-top: 6px; }
+  #results:empty { display: none; }
+  #results div { padding: 6px 9px; border-radius: 8px; cursor: pointer; }
+  #results div:hover { background: var(--chip-hover); }
+  #results small { color: var(--muted); font-size: 11.5px; }
+
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0 14px; padding: 4px; border-radius: 11px; background: rgba(0,0,0,.28); }
+  .tabs button { border: 0; background: transparent; color: var(--muted); padding: 6px 0; border-radius: 8px; font-weight: 600; }
+  .tabs button.on { background: rgba(255,255,255,.1); color: var(--text); }
+  .scroll { overflow-y: auto; padding: 6px 16px 18px; flex: 1; }
+  .tab { display: none; } .tab.on { display: block; }
+  h2 { font-size: 11.5px; font-weight: 650; color: var(--muted); margin: 18px 0 8px; letter-spacing: .06em; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  #regionChips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  #regionChips button { padding: 11px 4px; font-weight: 600; border-radius: 11px; }
+  #systemChips button { border-radius: 20px; padding: 4px 12px; }
+  #systemChips button.on { background: rgba(76, 194, 255, .16); border-color: rgba(76, 194, 255, .55); color: var(--accent); font-weight: 600; }
+
+  .rrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+  .rrow .tw { width: 12px; cursor: pointer; color: var(--faint); flex: none; font-size: 11px; }
+  .rrow .name { flex: 1; cursor: pointer; min-width: 0; }
+  .rrow .count { color: var(--faint); font-size: 11px; }
+  .rrow.r1 .name { font-weight: 650; }
+  .rrow.r2 { padding-left: 18px; font-size: 13px; color: #d5dce6; }
+  .rrow.r3 { padding: 5px 8px 5px 50px; font-size: 13px; cursor: pointer; border-radius: 8px; flex-direction: column; align-items: flex-start; gap: 0; }
+  .rrow.r3:hover { background: var(--chip-hover); }
+  .rrow.r3 small { color: var(--muted); font-size: 11px; }
+
+  .listbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .listbar label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .trow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 9px; cursor: pointer; }
+  .trow:hover { background: var(--chip-hover); }
+  .trow .tw { width: 12px; color: var(--faint); flex: none; font-size: 11px; }
+  .trow .name { flex: 1; min-width: 0; }
+  .trow .count { color: var(--faint); font-size: 11px; white-space: nowrap; }
+  .trow small { color: var(--muted); font-size: 11px; }
+  .trow.t1 { font-weight: 680; font-size: 14.5px; border-bottom: 1px solid var(--line); border-radius: 0; padding: 10px 6px; }
+  .trow.t1.open { color: var(--accent); }
+  .trow.t2 { padding-left: 20px; font-size: 13.5px; font-weight: 560; }
+  .trow.t2 button { opacity: 0; }
+  .trow.t2:hover button, .trow.t2.open button { opacity: 1; }
+  .trow.t3 { padding: 6px 10px 6px 42px; font-size: 13px; flex-direction: column; align-items: flex-start; gap: 0; }
+  .trow.t3.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+  .trow.t3.on small { color: inherit; opacity: .85; }
+  #tree button.more { margin: 6px 0 8px 20px; }
+  .layer { padding: 8px 0 6px; border-bottom: 1px solid var(--line); }
+  .layer .row { display: flex; align-items: center; gap: 8px; }
+  .layer .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.08); }
+  .layer label { flex: 1; display: flex; align-items: center; gap: 9px; cursor: pointer; min-width: 0; }
+  .layer .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 550; }
+  .layer .count { color: var(--faint); font-size: 11px; }
+  .layer input[type=range] { margin-top: 4px; }
+  .layer.off input[type=range] { opacity: .3; }
+  .layer.off .name { color: var(--muted); }
+
+  .cut .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .cut label { display: flex; align-items: center; gap: 7px; }
+
+  /* ---------- info card ---------- */
+  #info { position: fixed; top: 14px; right: 14px; width: 320px; padding: 18px; display: none; max-height: calc(100% - 28px); overflow-y: auto; z-index: 4; }
+  #info .eyebrow { font-size: 11px; color: var(--accent); font-weight: 650; letter-spacing: .06em; margin-bottom: 2px; }
+  #info h3 { margin: 0 28px 10px 0; font-size: 20px; line-height: 1.25; font-weight: 720; }
+  #infoTerms { display: grid; gap: 1px; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  #infoTerms:empty { display: none; }
+  #infoTerms div { display: flex; gap: 10px; padding: 7px 10px; background: rgba(255,255,255,.05); font-size: 13px; }
+  #infoTerms .lbl { flex: none; width: 70px; color: var(--muted); font-size: 12px; }
+  #info p { margin: 0 0 14px; font-size: 13px; color: #cfd6e0; }
+  #info .close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; padding: 0; border-radius: 50%; }
+  #info .btnrow button { flex: 1 1 calc(50% - 6px); }
+
+  /* ---------- dock, tooltip, misc ---------- */
+  #dock { position: fixed; left: calc(50% + var(--side, 346px) / 2); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center;
+    flex-wrap: wrap; justify-content: center; gap: 8px 12px; padding: 10px 14px; border-radius: 16px; z-index: 3;
+    width: max-content; max-width: calc(100% - var(--side, 346px) - 40px); }
+  #dock .peel { width: 220px; min-width: 140px; }
+  #dock .seg { display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: rgba(0,0,0,.3); }
+  #dock .seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 7px; color: var(--muted); }
+  #dock .seg button:hover { color: var(--text); }
+  #dock .seg button.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+  #dock button.ghost { padding: 6px 8px; }
+  canvas#view.erase { cursor: crosshair !important; }
+  #toast { position: fixed; left: calc(50% + var(--side, 346px) / 2); top: 18px; transform: translate(-50%, -20px); opacity: 0; pointer-events: none;
+    padding: 8px 10px 8px 16px; border-radius: 22px; font-size: 13px; display: flex; align-items: center; gap: 10px; z-index: 8;
+    transition: opacity .2s, transform .2s; white-space: nowrap; background: var(--glass-strong); }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  body.noside #toggleLeft { display: block; }
+  #dock .ticks { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+  #dock .sep { width: 1px; align-self: stretch; background: var(--line); }
+  #dock button { white-space: nowrap; }
+  #hiddenNote { position: fixed; left: calc(50% + var(--side, 346px) / 2); bottom: 120px; transform: translateX(-50%); padding: 5px 13px; border-radius: 20px;
+    font-size: 12px; color: var(--accent); background: rgba(76,194,255,.1); border: 1px solid rgba(76,194,255,.3); z-index: 3; margin: 0; white-space: nowrap; }
+  #hiddenNote:empty { display: none; }
+  #tip { position: fixed; z-index: 6; pointer-events: none; padding: 6px 10px; border-radius: 9px; background: var(--glass-strong);
+    border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0,0,0,.45); font-size: 13px; font-weight: 600; display: none; max-width: 280px; }
+  #tip small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; }
+  #status { position: fixed; left: calc(50% + var(--side, 346px) / 2); top: 16px; transform: translateX(-50%); padding: 7px 16px; border-radius: 20px; font-size: 12.5px; pointer-events: none; z-index: 3; }
+  #hint { position: fixed; right: 16px; bottom: 16px; font-size: 11.5px; color: var(--faint); text-align: right; line-height: 1.7; pointer-events: none; }
+  #hint kbd { font: inherit; padding: 1px 6px; border-radius: 5px; background: var(--chip); border: 1px solid var(--line); color: var(--muted); }
+  #toggleLeft { display: none; position: fixed; top: 14px; left: 14px; z-index: 5; }
+
+  #loader { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: var(--bg0); transition: opacity .5s; }
+  #loader.done { opacity: 0; pointer-events: none; }
+  #loader .box { width: min(320px, 80vw); text-align: center; }
+  #loader .logo { width: 54px; height: 54px; border-radius: 16px; margin: 0 auto 18px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); }
+  #loader b { font-size: 20px; letter-spacing: .06em; }
+  #loader .bar { height: 4px; border-radius: 4px; background: rgba(255,255,255,.1); margin: 18px 0 10px; overflow: hidden; }
+  #loader .bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s; }
+  #loader small { color: var(--muted); }
+
+  #credits { position: fixed; inset: 0; background: rgba(4,6,10,.7); display: none; align-items: center; justify-content: center; z-index: 30; padding: 16px; }
+  #credits .box { padding: 22px 24px; max-width: 580px; max-height: 100%; overflow-y: auto; background: var(--glass-strong); }
+  #credits a { color: var(--accent); }
+  #credits li { margin-bottom: 8px; font-size: 13px; }
+
+  #left.collapsed { display: none; }
+  /* bright studio backdrop (default): the model reads better against a light background */
+  body.lightbg { background: radial-gradient(1100px 820px at 62% 40%, #f4f6f9 0%, #d9dee6 48%, #aeb7c4 100%); }
+  body.lightbg {
+    --glass: rgba(255, 255, 255, .82); --glass-strong: rgba(255, 255, 255, .97);
+    --line: rgba(20, 30, 45, .1); --line-strong: rgba(20, 30, 45, .22);
+    --text: #18202b; --muted: #5b6676; --faint: #8a94a3;
+    --accent: #0b84d8; --accent-2: #5566f0; --accent-ink: #ffffff;
+    --chip: rgba(20, 30, 45, .05); --chip-hover: rgba(20, 30, 45, .1);
+    --shadow: 0 14px 40px rgba(40, 55, 80, .2);
+  }
+  body.lightbg #search, body.lightbg .tabs, body.lightbg #dock .seg { background: rgba(20, 30, 45, .06); }
+  body.lightbg .tabs button.on { background: #fff; box-shadow: 0 1px 4px rgba(40, 55, 80, .18); }
+  body.lightbg input[type=range]::-webkit-slider-runnable-track { background: rgba(20, 30, 45, .16); }
+  body.lightbg input[type=range]::-moz-range-track { background: rgba(20, 30, 45, .16); }
+  body.lightbg input[type=range]::-webkit-slider-thumb { box-shadow: 0 1px 4px rgba(40, 55, 80, .35); }
+  body.lightbg input[type=checkbox] { background: rgba(20, 30, 45, .2); }
+  body.lightbg input[type=checkbox]:checked { background: var(--accent); }
+  body.lightbg input[type=checkbox]:indeterminate { background: rgba(11, 132, 216, .45); }
+  body.lightbg ::-webkit-scrollbar-thumb { background: rgba(20, 30, 45, .2); }
+  body.lightbg .rrow.r2, body.lightbg #info p { color: #333d4b; }
+  body.lightbg #infoTerms div { background: rgba(20, 30, 45, .05); }
+  body.lightbg .layer .sw { box-shadow: 0 0 0 1px rgba(20, 30, 45, .25); }
+  body.lightbg #systemChips button.on { background: rgba(11, 132, 216, .12); border-color: rgba(11, 132, 216, .5); }
+  body.lightbg #hiddenNote { background: rgba(255, 255, 255, .85); border-color: rgba(11, 132, 216, .4); }
+  body.lightbg #loader { background: #eef1f5; }
+  body.lightbg #loader .bar { background: rgba(20, 30, 45, .12); }
+  body.lightbg #credits { background: rgba(60, 70, 85, .45); }
+  body.lightbg #hint { color: #4a5565; }
+  body.lightbg #hint kbd { background: rgba(0,0,0,.08); border-color: rgba(0,0,0,.14); color: #333c49; }
+  @media (max-width: 1600px) { #hint { display: none; } }
+  @media (max-width: 900px) {
+    #left { width: auto; right: 14px; top: 60px; bottom: auto; max-height: 58%; }
+    #left.collapsed { display: none; }
+    #toggleLeft { display: block; }
+    #info { top: auto; bottom: 84px; left: 14px; right: 14px; width: auto; max-height: 38%; }
+    #dock, #status, #hiddenNote { left: 50%; max-width: calc(100% - 28px); }
+    #dock .peel { width: 150px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body class="lightbg">
+<canvas id="view" tabindex="-1"></canvas>
+<button id="toggleLeft" class="glass">☰ 메뉴</button>
+
+<aside id="left" class="glass">
+  <div class="brand">
+    <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="5" r="2.6"/><path d="M12 8v8M6 11h12M12 16l-4 6M12 16l4 6"/></svg></div>
+    <div style="flex:1"><b>SOMA 3D</b><span>인체 해부 뷰어</span></div>
+    <button id="collapseLeft" class="ghost small" title="메뉴 접기">«</button>
+  </div>
+  <div class="searchbox">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="search" type="search" placeholder="위팔두갈래근, 승모근, 정중신경, femur…" autocomplete="off">
+    <div id="results"></div>
+  </div>
+  <div class="tabs" id="tabs">
+    <button class="on" data-tab="tabRegion">부위</button>
+    <button data-tab="tabList">목록</button>
+    <button data-tab="tabSystem">계통</button>
+    <button data-tab="tabTools">도구</button>
+  </div>
+
+  <div class="scroll">
+    <section class="tab on" id="tabRegion">
+      <h2>부위 선택</h2>
+      <div id="regionChips"></div>
+      <h2>표시할 계통</h2>
+      <div class="btnrow" id="systemChips"></div>
+      <h2>근육 투명도</h2>
+      <input id="musOpacity" type="range" min="0" max="1" step="0.01" value="1">
+      <p class="note">뇌·척수와 안구·귀도 여기서 따로 끌 수 있습니다. 근육을 투명하게 하면 속의 신경이 보입니다.</p>
+      <h2>근육 목록</h2>
+      <div id="regions"><span class="note">근육을 불러오면 표시됩니다.</span></div>
+    </section>
+
+    <section class="tab" id="tabList">
+      <h2>해부학 구조 목록</h2>
+      <div class="listbar">
+        <label><input id="spotOn" type="checkbox"> 속 구조 볼 때: 나머지 투명하게</label>
+        <button id="treeCollapse" class="small ghost">모두 접기</button>
+      </div>
+      <div id="tree"></div>
+      <p class="note">계통 → 그룹 → 구조 순서로 누르면 그 구조로 화면이 이동합니다.</p>
+    </section>
+
+    <section class="tab" id="tabSystem">
+      <h2>빠른 보기</h2>
+      <div class="btnrow" id="presets"></div>
+      <div id="layers"></div>
+    </section>
+
+    <section class="tab" id="tabTools">
+      <h2>단면으로 잘라내기</h2>
+      <div class="cut">
+        <div class="row">
+          <label><input id="cutOn" type="checkbox"> 사용</label>
+          <label><input id="cutFlip" type="checkbox"> 반대쪽</label>
+        </div>
+        <div class="btnrow" id="cutAxis" style="margin-bottom:10px">
+          <button class="small on" data-axis="x">좌우</button>
+          <button class="small" data-axis="y">상하</button>
+          <button class="small" data-axis="z">앞뒤</button>
+        </div>
+        <input id="cutPos" type="range" min="0" max="1" step="0.001" value="0.5">
+      </div>
+      <h2>정보</h2>
+      <div class="btnrow"><button id="showCredits">출처·라이선스</button></div>
+      <p class="note">교육용 자료이며 임상 판단에 쓰는 용도가 아닙니다.</p>
+    </section>
+  </div>
+</aside>
+
+<aside id="info" class="glass">
+  <button class="close ghost" id="infoClose" title="선택 해제">✕</button>
+  <div class="eyebrow" id="infoMeta"></div>
+  <h3 id="infoName"></h3>
+  <div id="infoTerms"></div>
+  <p id="infoDesc"></p>
+  <div class="btnrow">
+    <button id="actHide">숨기기</button>
+    <button id="actFade">페이드</button>
+    <button id="actIsolate">이것만 보기</button>
+    <button id="actFocus">확대</button>
+  </div>
+</aside>
+
+<div id="dock" class="glass">
+  <div class="peel">
+    <input id="peel" type="range" min="0" max="3" step="0.01" value="0.75" title="레이어 벗기기">
+    <div class="ticks"><span>피부</span><span>근육</span><span>골격</span><span>장기</span></div>
+  </div>
+  <div class="sep"></div>
+  <div class="seg">
+    <button id="modeSelect" class="on" title="클릭하면 이름과 정보를 봅니다">선택</button>
+    <button id="modeErase" title="클릭하는 구조를 바로 숨깁니다 (E)">지우개</button>
+  </div>
+  <div class="seg" id="halves">
+    <button class="on" data-half="all" title="몸 전체 보기">전체</button>
+    <button data-half="right" title="몸의 오른쪽 반만 보기 (정중면에서 자름)">오른쪽 반</button>
+    <button data-half="left" title="몸의 왼쪽 반만 보기 (정중면에서 자름)">왼쪽 반</button>
+  </div>
+  <div class="seg" id="views">
+    <button data-view="front" title="앞에서 보기">앞</button>
+    <button data-view="back" title="뒤에서 보기">뒤</button>
+    <button data-view="left" title="왼쪽에서 보기">좌</button>
+    <button data-view="right" title="오른쪽에서 보기">우</button>
+  </div>
+  <div class="sep"></div>
+  <button id="bgToggle" class="ghost" title="배경 밝게/어둡게">◐ 배경</button>
+  <button id="undoBtn" class="ghost" title="되돌리기 (Ctrl+Z)">↶ 되돌리기</button>
+  <button id="resetView" class="ghost" title="전신이 보이게 시점 초기화">⟲ 시점</button>
+  <button id="restoreAll" class="ghost" title="숨김·페이드 모두 복원">↺ 전체 복원</button>
+</div>
+<p id="hiddenNote"></p>
+<div id="toast" class="glass"></div>
+<div id="tip"></div>
+<div id="status" class="glass"></div>
+<div id="hint">드래그 회전 · 휠 확대 · 우클릭 이동 · 클릭 선택<br><kbd>H</kbd> 숨기기 <kbd>E</kbd> 지우개 <kbd>Ctrl+Z</kbd> 되돌리기 <kbd>F</kbd> 페이드 <kbd>I</kbd> 이것만</div>
+
+<div id="loader">
+  <div class="box">
+    <div class="logo"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="2.6"/><path d="M12 8v8M6 11h12M12 16l-4 6M12 16l4 6"/></svg></div>
+    <b>SOMA 3D</b>
+    <div class="bar"><i id="loaderBar"></i></div>
+    <small id="loaderText">인체 모델을 불러오는 중…</small>
+  </div>
+</div>
+
+<div id="credits">
+  <div class="box glass">
+    <h3 style="margin-top:0">출처·라이선스</h3>
+    <p style="font-size:13px">이 뷰어의 3D 모델은 아래 공개 데이터에서 가져왔습니다.</p>
+    <ul>
+      <li><b>기본 모델</b>: BodyParts3D - The Database Center for Life Science - CC-BY-SA 2.1 Japan.
+        단순화·압축본과 구조 설명은 <a href="https://github.com/niuxito/human-body" target="_blank" rel="noopener">niuxito/human-body</a> (CC BY-SA 4.0).</li>
+      <li><b>상세 모델</b>: Z-Anatomy - The open source atlas of anatomy - CC-BY-SA 4.0 (BodyParts3D 파생).
+        웹용 변환본은 <a href="https://github.com/nqwrc/3d-anatomy" target="_blank" rel="noopener">nqwrc/3d-anatomy</a> (CC BY-NC-SA 4.0, 비상업).
+        포함된 일부 모델: "Brainder", "White matter" (University of Washington); "Cranial Nerves and Foramina" (University of Dundee, CAHID, CC-BY 4.0);
+        "Anatomy of the Inner Ear" (University of Dundee School of Medicine, CC-BY-NC-SA 4.0); "Kidney" (lissiecowley, CC-BY-NC 4.0).</li>
+      <li>렌더링: three.js (MIT), meshoptimizer (MIT), Draco (Apache 2.0). 글꼴: Pretendard (SIL OFL 1.1).</li>
+    </ul>
+    <p class="note">상세 모델에는 비상업 조건이 있으므로 상업적으로 쓰려면 상세 모델을 빼거나 교체해야 합니다. 라이선스 원문은 licenses 폴더에 있습니다.</p>
+    <p style="margin-bottom:0"><button id="creditsClose">닫기</button></p>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="app.js?v=14"></script>
+</body>
+</html>
